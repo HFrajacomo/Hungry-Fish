@@ -1,10 +1,12 @@
-; Screen Rotation Test
+; Test
 
 Include ..\Irvine32.inc
 
 .data
 	matriz BYTE 01h, 12 dup(00h), 01h , 00h, 01h
 	carry BYTE ?
+	player_x DWORD ?  ; 0-15
+	player_y DWORD ?  ; 0-7
 
 .code
 
@@ -40,6 +42,37 @@ L1:
 	ret
 Rotate ENDP
 
+; NO PARAMETER!
+; Moves all elements in an array to the left and puts the first one into the last
+Shift PROC
+	push ecx
+	push eax
+	push ebx
+	push edx
+	mov ecx, LENGTHOF matriz
+	dec ecx
+	mov ebx, 0
+	mov edx, 1
+	mov al, matriz[0]
+
+L1:	
+	mov al, matriz[edx]
+	mov matriz[ebx], al
+	inc ebx
+	inc edx
+	cmp ebx, ecx
+	jne L1
+	
+	mov al, 0
+	mov matriz[ecx], al
+	
+	pop edx
+	pop ebx
+	pop eax
+	pop ecx
+	ret
+Shift ENDP
+
 WriteArray PROC
 	push ecx
 	push eax
@@ -62,7 +95,7 @@ L2:
 WriteArray ENDP
 
 main PROC
-	call Rotate
+	call Shift
 	call WriteArray
 
 	call ReadChar
