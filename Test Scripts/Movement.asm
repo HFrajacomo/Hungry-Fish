@@ -10,6 +10,7 @@ Include ..\win32.inc
 	carry BYTE ?
 	player_x DWORD 10  ; 6-30  // 0 - 31
 	player_y DWORD 14  ; 0-31
+	foodwaitingtime DWORD 30
 	
 	
 	
@@ -25,8 +26,8 @@ Include ..\win32.inc
 
 .code
 
-; NO PARAMETER! ecx is size of array, eax is the carry variable and ebx is length of array constant
-; Moves all elements in an array to the left and puts the first one into the last
+; Rotates all elements in array. Inserts the first element into the last
+; NO PARAMETERS
 Rotate PROC
 	push ecx
 	push eax
@@ -57,8 +58,8 @@ L1:
 	ret
 Rotate ENDP
 
-; NO PARAMETER!
 ; Moves all elements in an array to the left
+; NO PARAMETERS
 Shift PROC
 	push ecx
 	push eax
@@ -97,12 +98,16 @@ L1:
 	ret
 Shift ENDP
 
-
+; Draws screen_buffer to the terminal
+; NO PARAMETERS
 DrawScreen PROC
 	push ecx
 	push eax
 	push edx
 	push ebx
+	
+	mov edx, 0    ; Posiciona o cursor no começo do terminal
+	call GOTOXY
 	
 	mov edx, 16  ; Screen y Size
 	mov ebx, 0
@@ -126,6 +131,8 @@ L2:
 	ret
 DrawScreen ENDP
 
+; Moves the fish to the screen_buffer
+; NO PARAMETERS
 DrawFish PROC
 	push eax
 	push ebx
@@ -159,6 +166,8 @@ L4:
 	ret
 DrawFish ENDP
 
+; Waits 50 ms. Used in keyboard key detection.
+; NO PARAMETERS
 Tickrate PROC
 	push eax
 	mov eax, 50
@@ -167,14 +176,18 @@ Tickrate PROC
 	ret
 Tickrate ENDP
 
+; Waits 20 ms. Used in graphic rendering optimization
+; NO PARAMETERS
 FPSRate PROC
 	push eax
-	mov eax, 40
+	mov eax, 20
 	call delay
 	pop eax
 	ret
 FPSRate ENDP
 
+; In-game key detection and fish movement
+; NO PARAMETERS
 Move PROC
 	push eax
 	push ebx
@@ -206,7 +219,7 @@ left:
 
 right:
 	mov ebx, player_x
-	cmp ebx, 30
+	cmp ebx, 31
 	jae sair
 	inc ebx
 	mov player_x, ebx
@@ -222,7 +235,7 @@ up:
 
 down:
 	mov ebx, player_y
-	cmp ebx, 16
+	cmp ebx, 15
 	jae sair
 	inc ebx
 	mov player_y, ebx
@@ -235,33 +248,102 @@ sair:
 	ret
 Move ENDP
 
-; Zera o buffer da tela
+; Clears the game screen fast
+; NO PARAMETERS
 Clear PROC
 	push eax
 	push ecx
 	push ebx
+	push edx
 	
 	mov ecx, LENGTHOF screen_buffer
 	mov al, " "
 	mov ebx, 0
+	mov edx, 0
 L5:
-	mov screen_buffer[ebx], al
-	inc ebx
-	cmp ebx, ecx
+	call GOTOXY
+	call WriteChar
+	inc dl
+	cmp dl, 16
 	jne L5
+	add dx, 0100h
+	mov dl, 0
+	cmp dx, 2000h
+	je L6
+L6:
 	
+	pop edx
 	pop ebx
 	pop ecx
 	pop eax
 	ret
 Clear ENDP
 
+; Fixes cursor glitching all around the screen
+; NO PARAMETERS
+FixCursor PROC
+	push edx
+	
+	mov edx, 0
+	call GOTOXY
+	
+	pop edx
+	ret
+FixCursor ENDP
+
+; Generates food into the screen matrix
+; Arguments: foodwaitingtime
+CreateFood PROC
+	push eax  ; + Ascii
+	push ecx  ; Max waiting time
+	push ebx  ; Row index
+
+	mov ecx, foodwaitingtime
+	dec ecx
+	cmp ecx, 0  ; If it's not time yet
+	ja L7	  ; Ends function
+	
+	; Else, allocates a food to the screen matrix
+	mov eax, 16  
+	call RandomRange
+	mov ah, 0
+	mov bl, 32
+	mul bl
+	mov ebx, eax
+	mov al, "+"
+	mov matriz[ebx+31], al
+	mov eax, 50  ; Next waiting time
+	call RandomRange
+	mov ecx, eax
+	
+L7:
+	mov foodwaitingtime, ecx   ; Saves time value
+	
+	; Fix for food jam effect
+	mov eax, 11
+	call RandomRange
+	cmp eax, 0
+	jne L8
+	
+	mov foodwaitingtime, 1
+L8:	
+	pop ebx
+	pop ecx
+	pop eax
+	ret
+CreateFood ENDP
+
 main PROC
-las:
 	call Clrscr
+	call Randomize
+	
+las:
+	call Clear
+	call CreateFood
 	call DrawFish
 	call DrawScreen
-	;call TickRate
+	call FixCursor
+	call FPSRate
 	call Move
 	call Shift
 	jmp las
