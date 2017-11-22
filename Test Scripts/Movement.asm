@@ -7,17 +7,23 @@ nRows = 16
 
 .data
 	matriz BYTE nColumns*nRows dup(00h)
-	
 	screen_buffer BYTE nColumns*nRows dup(0)
+	
 	carry BYTE ?
+	
+	Swap DWORD 0
+	
 	player_x DWORD 6  ; 6-62  // 0 - 63
 	player_y DWORD 0  ; 0-31
 	foodwaitingtime DWORD 30
 	score DWORD 0
+	difficulty DWORD 20  ; 50 - Easy, 40 - Medium, 30 - Hard, 20 - Pro
+	enemytimer DWORD 20
+	enemyposition DWORD 0,50,50,0,50,50,0,50,50,0,50,50,0,50,50,0,50,50,0,50,50,0,50,50,0,50,50,0,50,50
 
 	tScore BYTE "Score: ", 0
 	
-	
+									; <<*)))))>><  11 char long
 	
 	                               ; ><(((ยบ>     
 								   
@@ -104,6 +110,26 @@ L1:
 	mov matriz[959], 0
 	mov matriz[1023], 0
 	
+	;;; Shifts enemy positions ;;;
+	; Gets a third of length of enemyposition array
+	mov ebx, 1
+	mov ecx, 3
+	mov eax, LENGTHOF enemyposition
+	idiv cl
+	mov ecx, eax
+	
+L18:  ; Checks every x position field and decreases them
+	mov eax, enemyposition[ebx]
+	dec eax
+	cmp eax, -12 ; If is out of screen
+	jbe L19
+	mov enemyposition[ebx-1], 0  ; Unallocates Enemy
+	
+L19:	
+	mov enemyposition[ebx], eax
+	add ebx, 3
+	loop L18
+	
 	pop edx
 	pop ebx
 	pop eax
@@ -119,7 +145,7 @@ DrawScreen PROC
 	push edx
 	push ebx
 	
-	; Posiciona o cursor após o header
+	; Posiciona o cursor ap?s o header
 	call GameCursor
 	call SetColor_Blue
 	
@@ -412,7 +438,7 @@ DrawHeader PROC
 	
 	; Draws Scoreboard
 	call FixCursor
-	call SetColor_Red
+	call SetColor_Default
 	mov edx, OFFSET tScore
 	call WriteString
 	mov eax, score
@@ -455,23 +481,23 @@ Collision PROC
 	; Merges screen_buffer with screen_matrix to find collisions
 	cmp matriz[eax], 0
 	ja L11
+	inc ebx
 	cmp matriz[eax-1], 0
-	inc ebx
 	ja L11
+	inc ebx
 	cmp matriz[eax-2], 0
-	inc ebx
 	ja L11
+	inc ebx
 	cmp matriz[eax-3], 0
-	inc ebx
 	ja L11
+	inc ebx
 	cmp matriz[eax-4], 0
-	inc ebx
 	ja L11
+	inc ebx
 	cmp matriz[eax-5], 0
-	inc ebx
 	ja L11
-	cmp matriz[eax-6], 0
 	inc ebx
+	cmp matriz[eax-6], 0
 	ja L11
 	jmp L12
 	
@@ -486,8 +512,12 @@ HitFood: ; Collided to food
 	mov eax, score
 	inc eax
 	mov score, eax
+	jmp L12
 
 EnemyHit:  ; Collided to enemy
+	call SetColor_Default
+	call Clrscr
+	exit
 
 L12:  ; Didn't Collide	
 	pop ebx
@@ -506,22 +536,272 @@ Get_Index PROC
 	ret
 Get_Index ENDP
 
+; Reads enemy x and y information and returns the position index on the screen
+; READS: ebx = index of status element of the object
+; RETURNS: eax = matriz index value
+Get_EnemyIndex PROC
+	push ecx
+	
+	mov eax, 0
+	mov eax, enemyposition[ebx+2]
+	mov ecx, nColumns
+	mul cx
+	add eax, enemyposition[ebx+1]
+	
+	pop ecx
+	ret
+Get_EnemyIndex ENDP
+
+; Creates enemy object
+; NO PARAMETERS
+CreateEnemy PROC
+	push eax
+	push ebx
+	push ecx
+
+	mov ecx, enemytimer
+	dec ecx
+	cmp ecx, 0  ; If it's not time yet
+	ja L13	  ; Ends function
+	
+	; Else, allocates an enemy to the screen matrix
+	call AllocateEnemy
+	cmp ebx, 0
+	je L13  ; Exits if allocation was unsuccessful
+	mov ecx, eax  ; ecx contains index position to allocated element
+	
+	mov eax, nRows  
+	call RandomRange ; Finds a Y position for the enemy
+	
+	; Sets enemy information array
+	mov enemyposition[ecx], 1
+	mov enemyposition[ecx+1], 63
+	mov enemyposition[ecx+2], eax
+	
+	mov ecx, difficulty
+	
+L13:
+	mov enemytimer, ecx
+	pop ecx
+	pop ebx
+	pop eax
+	ret
+CreateEnemy ENDP
+
+; Allocates an enemy object into the enemyposition array
+; RETURNS: eax = index of status field of the object. ebx = boolean (if allocation was successful)
+AllocateEnemy PROC
+	push ecx
+	push eax
+
+	; Gets a third of length of enemyposition array
+	mov ebx, 0
+	mov ecx, 3
+	mov eax, LENGTHOF enemyposition
+	idiv cl
+	mov ecx, eax
+	
+L14:  ; Checks every status position for an unallocated enemy
+	mov eax, enemyposition[ebx]
+	cmp eax, 0
+	je L15
+	add ebx, 3
+	loop L14
+	
+L15: ; Found an unallocated position
+	mov eax, ebx
+	mov ebx, 1
+	jmp L17
+
+L16: ; No position found (VERY UNLIKELY)	
+	mov ebx, 0
+	pop eax
+	pop ecx
+	ret
+L17: ; Exit function if allocated successfully
+	pop ecx
+	pop ecx
+	ret
+AllocateEnemy ENDP
+
+DrawEnemy PROC
+	push eax
+	push ebx
+	push ecx
+	push edx
+
+	; Gets a third of enemies' array length
+	mov eax, LENGTHOF enemyposition
+	mov ecx, 3
+	idiv cl
+	mov ecx, eax ; number of iterations
+	mov ebx, 0  ; loop index
+	
+L20: ; Checks for the closest border
+	mov edx, enemyposition[ebx]
+	cmp edx, 0  ; Checks if object is allocated
+	je L22 ; Not allocated, move to the next object
+
+	mov edx, enemyposition[ebx+1] 
+	cmp edx, 0      ; Checks if is next to right or left border
+	jb L21     ; Goes to left border rendering part
+	
+	; Draws relative to right border
+	mov Swap, ecx  ; Quick saves number of iterations to Swap memory
+	cmp edx, nColumns  ; 1st Char
+	jnb L22
+	call Get_EnemyIndex
+	call WriteDec
+	mov cl, "<"
+	push ebx
+	mov matriz[eax], cl  ; BUG
+	pop ebx
+	inc edx
+	cmp edx, nColumns  ; 2nd Char
+	jnb L22
+	mov matriz[eax+1], cl
+	inc edx
+	cmp edx, nColumns  ; 3rd Char
+	jnb L22
+	mov cl, "*"
+	mov matriz[eax+2], cl
+	inc edx
+	cmp edx, nColumns  ; 4th Char
+	jnb L22
+	mov cl, ")"
+	mov matriz[eax+3], cl
+	inc edx
+	cmp edx, nColumns  ; 5th Char
+	jnb L22
+	mov matriz[eax+4], cl
+	inc edx
+	cmp edx, nColumns  ; 6th Char
+	jnb L22
+	mov matriz[eax+5], cl
+	inc edx
+	cmp edx, nColumns  ; 7th Char
+	jnb L22
+	mov matriz[eax+6], cl
+	inc edx
+	cmp edx, nColumns  ; 8th Char
+	jnb L22
+	mov matriz[eax+7], cl
+	inc edx
+	cmp edx, nColumns  ; 9th Char
+	jnb L22
+	mov cl, ">"
+	mov matriz[eax+8], cl
+	inc edx
+	cmp edx, nColumns  ; 10th Char
+	jnb L22
+	mov matriz[eax+9], cl
+	inc edx
+	cmp edx, nColumns  ; 11th Char
+	jnb L22
+	mov cl, "<"
+	mov matriz[eax+10], cl
+	inc edx
+	jmp L22  ; Jumps to next object iteration
+	
+L23:  ; Bridges far loop
+	jmp L20
+	
+L21: ; Draws relative to left border
+	call DrawEnemy_LeftBorder  ; Used to shorten jumps
+	
+L22: ; Goes to next object
+	add ebx, 3
+	mov ecx, Swap  ; Quick loads number of iterations to ecx
+	loop L23
+	
+	pop edx
+	pop ecx
+	pop ebx
+	pop eax
+	ret
+DrawEnemy ENDP
+
+; Draws enemies that are against the left border. PROC made to purely shorten jump distances
+; Used inside DrawEnemy PROC only
+DrawEnemy_LeftBorder PROC
+	mov Swap, ecx  ; Quick saves number of iterations to Swap memory
+	add edx, 10  ; Starts drawing from right to left
+	cmp edx, 0  ; 1st Char
+	jb L24
+	push ebx
+	call Get_EnemyIndex
+	pop ebx
+	mov cl, "<"
+	mov matriz[eax+10], cl
+	dec edx
+	cmp edx, 0  ; 2nd Char
+	jb L24
+	mov cl, ">"
+	mov matriz[eax+9], cl
+	dec edx
+	cmp edx, 0  ; 3rd Char
+	jb L24
+	mov matriz[eax+8], cl
+	dec edx
+	cmp edx, 0  ; 4th Char
+	jb L24
+	mov cl, ")"
+	mov matriz[eax+7], cl
+	dec edx
+	cmp edx, 0  ; 5th Char
+	jb L24
+	mov matriz[eax+6], cl
+	dec edx
+	cmp edx, 0  ; 6th Char
+	jb L24
+	mov matriz[eax+5], cl
+	dec edx
+	cmp edx, 0  ; 7th Char
+	jb L24
+	mov matriz[eax+4], cl
+	dec edx
+	cmp edx, 0  ; 8th Char
+	jb L24
+	mov matriz[eax+3], cl
+	dec edx
+	cmp edx, 0  ; 9th Char
+	jb L24
+	mov cl, "*"
+	mov matriz[eax+2], cl
+	dec edx
+	cmp edx, 0  ; 10th Char
+	jb L24
+	mov cl, "<"
+	mov matriz[eax+1], cl
+	dec edx
+	cmp edx, 0  ; 11th Char
+	jb L24
+	mov matriz[eax], cl
+	dec edx	
+	
+L24:
+
+	ret
+DrawEnemy_LeftBorder ENDP
+
 main PROC
 	call Clrscr
 	call Randomize
 	call SetColor_Blue
-las:
+mLoop:
 	call Clear
 	call CreateFood
+	call CreateEnemy
 	call DrawFish
 	call DrawHeader
 	call DrawScreen
+	call DrawEnemy
 	call FixCursor
 	call FPSRate
 	call Shift
 	call Collision
 	call Move
-	jmp las
+	jmp mLoop
 	
 	exit
 main ENDP
