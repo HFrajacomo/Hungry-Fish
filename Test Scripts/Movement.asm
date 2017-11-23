@@ -15,12 +15,12 @@ nRows = 16
 	
 	player_x DWORD 6  ; 6-62  // 0 - 63
 	player_y DWORD 0  ; 0-31
-	foodwaitingtime DWORD 30
+	foodwaitingtime DWORD 30  ; 40 - Easy, 30 - Medium, 20 - Hard, 10 - Pro
 	score DWORD 0
-	difficulty DWORD 20  ; 50 - Easy, 40 - Medium, 30 - Hard, 20 - Pro
+	difficulty DWORD 5  ; 20 - Easy, 15 - Medium, 10 - Hard, 5 - Pro
 	enemytimer DWORD 20
-	enemyposition DWORD 0,50,50,0,50,50,0,50,50,0,50,50,0,50,50,0,50,50,0,50,50,0,50,50,0,50,50,0,50,50
-
+	enemyposition DWORD 30 dup(0)
+	
 	tScore BYTE "Score: ", 0
 	
 									; <<*)))))>><  11 char long
@@ -260,7 +260,7 @@ left:
 	mov ebx, player_x
 	cmp ebx, 6
 	jbe sair
-	sub ebx, 1
+	dec ebx
 	mov player_x, ebx
 	jmp sair
 
@@ -268,7 +268,7 @@ right:
 	mov ebx, player_x
 	cmp ebx, nColumns-1
 	jae sair
-	add ebx, 1
+	inc ebx
 	mov player_x, ebx
 	jmp sair
 
@@ -276,7 +276,7 @@ up:
 	mov ebx, player_y
 	cmp ebx, 0
 	jbe sair
-	sub ebx, 1
+	dec ebx
 	mov player_y, ebx
 	jmp sair
 
@@ -284,7 +284,7 @@ down:
 	mov ebx, player_y
 	cmp ebx, nRows-1
 	jae sair
-	add ebx, 1
+	inc ebx
 	mov player_y, ebx
 	
 sair:
@@ -528,11 +528,14 @@ Collision ENDP
 ; Reads player x and y information and returns the position index on the screen
 ; RETURNS: eax = matriz index value
 Get_Index PROC
+	push ebx
 	
 	mov eax, player_y
-	shl eax, 6
+	mov ebx, nColumns
+	imul bl
 	add eax, player_x
 	
+	pop ebx
 	ret
 Get_Index ENDP
 
@@ -545,7 +548,7 @@ Get_EnemyIndex PROC
 	mov eax, 0
 	mov eax, enemyposition[ebx+2]
 	mov ecx, nColumns
-	mul cx
+	imul cl
 	add eax, enemyposition[ebx+1]
 	
 	pop ecx
@@ -570,13 +573,15 @@ CreateEnemy PROC
 	je L13  ; Exits if allocation was unsuccessful
 	mov ecx, eax  ; ecx contains index position to allocated element
 	
-	mov eax, nRows  
+	mov eax, nRows 
 	call RandomRange ; Finds a Y position for the enemy
+	mov ebx, nColumns
+	mul bl
+	mov ebx, eax
+	mov al, "<"
 	
 	; Sets enemy information array
-	mov enemyposition[ecx], 1
-	mov enemyposition[ecx+1], 63
-	mov enemyposition[ecx+2], eax
+	mov matriz[ebx+63], al
 	
 	mov ecx, difficulty
 	
@@ -624,6 +629,8 @@ L17: ; Exit function if allocated successfully
 	ret
 AllocateEnemy ENDP
 
+COMMENT @
+
 DrawEnemy PROC
 	push eax
 	push ebx
@@ -635,12 +642,16 @@ DrawEnemy PROC
 	mov ecx, 3
 	idiv cl
 	mov ecx, eax ; number of iterations
+	dec ecx
 	mov ebx, 0  ; loop index
 	
 L20: ; Checks for the closest border
 	mov edx, enemyposition[ebx]
 	cmp edx, 0  ; Checks if object is allocated
 	je L22 ; Not allocated, move to the next object
+	
+	cmp edx, 2 ; Checks if object was drawn already
+	je L26
 
 	mov edx, enemyposition[ebx+1] 
 	cmp edx, 0      ; Checks if is next to right or left border
@@ -651,11 +662,8 @@ L20: ; Checks for the closest border
 	cmp edx, nColumns  ; 1st Char
 	jnb L22
 	call Get_EnemyIndex
-	call WriteDec
 	mov cl, "<"
-	push ebx
 	mov matriz[eax], cl  ; BUG
-	pop ebx
 	inc edx
 	cmp edx, nColumns  ; 2nd Char
 	jnb L22
@@ -708,10 +716,19 @@ L23:  ; Bridges far loop
 	
 L21: ; Draws relative to left border
 	call DrawEnemy_LeftBorder  ; Used to shorten jumps
+	jmp L22
+	
+L26: ; Object was already drawn
+	mov enemyposition[ebx], 2
 	
 L22: ; Goes to next object
 	add ebx, 3
+	cmp Swap, 0
+	je L25
 	mov ecx, Swap  ; Quick loads number of iterations to ecx
+	jmp L25
+
+L25:	
 	loop L23
 	
 	pop edx
@@ -721,6 +738,33 @@ L22: ; Goes to next object
 	ret
 DrawEnemy ENDP
 
+Debug PROC
+	push ecx
+	push eax
+	push ebx
+	
+	mov ax, 3000h
+	call GOTOXY
+	mov eax, LENGTHOF enemyposition
+	mov ecx, 3
+	idiv cl
+	mov ecx, eax
+	dec ecx
+	mov ebx, 0
+	
+LDebug:
+	mov eax, enemyposition[ebx]
+	call WriteDec
+	call Crlf
+	add ebx, 3
+	loop LDebug
+	
+	pop ebx
+	pop eax
+	pop ecx
+	ret
+Debug ENDP
+
 ; Draws enemies that are against the left border. PROC made to purely shorten jump distances
 ; Used inside DrawEnemy PROC only
 DrawEnemy_LeftBorder PROC
@@ -728,9 +772,7 @@ DrawEnemy_LeftBorder PROC
 	add edx, 10  ; Starts drawing from right to left
 	cmp edx, 0  ; 1st Char
 	jb L24
-	push ebx
 	call Get_EnemyIndex
-	pop ebx
 	mov cl, "<"
 	mov matriz[eax+10], cl
 	dec edx
@@ -783,6 +825,120 @@ L24:
 
 	ret
 DrawEnemy_LeftBorder ENDP
+@
+
+Draw_Enemy PROC ; Coloca antes do Create Enemy
+	push eax
+	push ebx
+	push ecx
+	push edx
+	
+	mov eax, nColumns  ; iteration index
+	sub eax, 2
+	mov ecx, nRows
+	mov ebx, 0
+
+L27:  ; Reads last element of every row
+	mov bl, matriz[eax]
+	cmp bl, 0
+	je L28
+	cmp bl, "+"
+	je L28
+	cmp matriz[eax-1], 0
+	je State1
+	cmp matriz[eax-1], ">"
+	je State11
+	cmp matriz[eax-1], "<"
+	je State2
+	cmp matriz[eax], "*"
+	je State3
+	cmp matriz[eax-1], "*"    ;;;;;;;;;;;;;;;;;
+	je State4
+	cmp matriz[eax-2], "*"
+	je State5
+	cmp matriz[eax-3], "*"
+	je State6
+	cmp matriz[eax-4], "*"
+	je State7
+	cmp matriz[eax-5], "*"
+	je State8
+	cmp matriz[eax-1], ")"
+	je State9
+	cmp matriz[eax-1], ">"
+	je State10
+	jmp L28
+	
+L29:  ; Jump extend
+	jmp L27
+State1:
+	mov dl, "<"
+	mov matriz[eax+1], dl
+	jmp L28
+State2:
+	cmp matriz[eax], 0
+	je L28
+	cmp matriz[eax], "*"
+	je State3
+	mov dl, "*"
+	mov matriz[eax+1], dl
+	jmp L28
+State3:
+	mov dl, ")"
+	mov matriz[eax+1], dl
+	jmp L28
+State4:
+	mov dl, ")"
+	mov matriz[eax+1], dl
+	jmp L28
+State5:
+	mov dl, ")"
+	mov matriz[eax+1], dl
+	jmp L28
+State6:
+	mov dl, ")"
+	mov matriz[eax+1], dl
+	jmp L28
+State7:
+	mov dl, ")"
+	mov matriz[eax+1], dl
+	jmp L28
+State8:
+	mov dl, ">"
+	mov matriz[eax+1], dl
+	jmp L28
+
+L30: ; Jump Extend
+		jmp L29
+
+State9:
+	mov dl, ">"
+	mov matriz[eax+1], dl
+	jmp L28
+State10:
+	mov dl, "<"
+	mov matriz[eax+1], dl
+	jmp L28
+State11:
+	mov dl, ")"
+	cmp matriz[eax-2], dl
+	je State10
+	
+State12:
+	mov dl, 0
+	mov matriz[eax+1], dl
+	
+L28: ; Not Enemy
+	add eax, nColumns
+	loop L30
+	
+	pop edx
+	pop ecx
+	pop ebx
+	pop eax
+	ret
+Draw_Enemy ENDP
+
+
 
 main PROC
 	call Clrscr
@@ -791,11 +947,11 @@ main PROC
 mLoop:
 	call Clear
 	call CreateFood
+	call DrawHeader
+	call Draw_Enemy
 	call CreateEnemy
 	call DrawFish
-	call DrawHeader
 	call DrawScreen
-	call DrawEnemy
 	call FixCursor
 	call FPSRate
 	call Shift
