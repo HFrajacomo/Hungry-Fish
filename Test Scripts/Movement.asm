@@ -6,32 +6,48 @@ nColumns = 64
 nRows = 16
 
 .data
+	; Display Matrixes
 	matriz BYTE nColumns*nRows dup(00h)
 	screen_buffer BYTE nColumns*nRows dup(0)
 	
+	; Miscellaneous Variables 
 	carry BYTE ?
-	
 	Swap DWORD 0
 	
+	; Player Variables
 	player_x DWORD 6  ; 6-62  // 0 - 63
-	player_y DWORD 0  ; 0-31
-	foodwaitingtime DWORD 30  ; 40 - Easy, 30 - Medium, 20 - Hard, 10 - Pro
+	player_y DWORD 6  ; 0-15
 	score DWORD 0
-	difficulty DWORD 5  ; 20 - Easy, 15 - Medium, 10 - Hard, 5 - Pro
+	
+	; Enemy options
 	enemytimer DWORD 20
 	enemyposition DWORD 30 dup(0)
 	
+	; Difficulty
+	foodwaitingtime DWORD 30  ; 40 - Easy, 30 - Medium, 20 - Hard, 10 - Pro
+	difficulty DWORD 5  ; 20 - Easy, 15 - Medium, 10 - Hard, 5 - Pro
+	
+	; Screen Options
+	GameState DWORD 0  ; 0 - Main Menu, 1 - In-game, 2 - Instructions, 3 - Difficulty
+	MenuOption BYTE 00000001b
+	
+	; Text Memory
 	tScore BYTE "Score: ", 0
+	tTitle BYTE "Hungry Fish", 0
+	tPlay BYTE "Play!", 0
+	tInstructions BYTE "Instructions!", 0
+	tDifficulty BYTE "Difficulty!", 0
+	tQuit BYTE "Quit!", 0
 	
 									; <<*)))))>><  11 char long
 	
-	                               ; ><(((ยบ>     
+	                               ; ><(((??>     
 								   
 								   ; Ascii Characters
 								   ; > = 62
 								   ; < = 60
 								   ; ( = 40
-								   ; ยบ = 167
+								   ; ?? = 167
 								   ; * = 42
 								   ; + = 43
 
@@ -146,7 +162,11 @@ DrawScreen PROC
 	push ebx
 	
 	; Posiciona o cursor ap?s o header
-	call GameCursor
+	mov edx, GameState
+	cmp edx, 1
+	jne skip
+	call GameCursor	
+skip:
 	call SetColor_Blue
 	
 	mov edx, nRows
@@ -931,20 +951,199 @@ L28: ; Not Enemy
 	add eax, nColumns
 	loop L30
 	
-	pop edx
+	pop edx 
 	pop ecx
 	pop ebx
 	pop eax
 	ret
 Draw_Enemy ENDP
 
+; Writes screen background for main screen
+; NO PARAMETERS
+SetMainScreen PROC
+	push eax
+	push ecx
+	push edx
+	
+	mov ecx, nRows-1  ; Loop Index
+	mov al, "#"
+	mov edx, 0  ; Screen Index
+	
+L31: ; Draws Sides
+	mov screen_buffer[edx], al
+	add edx, nColumns-1
+	mov screen_buffer[edx], al
+	inc edx
+	loop L31
+
+	mov edx, 1
+	mov ecx, nColumns-2
+
+L32: ; Draws upper border
+	mov screen_buffer[edx], al
+	inc edx
+	loop L32
+
+	mov edx, nColumns
+	mov ecx, nColumns-2
+	mov eax, nRows-1
+	mul dl
+	mov edx, eax
+	mov al, "#"
+	
+L33: ; Draws bottom border
+	mov screen_buffer[edx], al
+	inc edx
+	loop L33
+	mov screen_buffer[edx], al
+	inc edx
+	mov screen_buffer[edx], al
+	
+	pop edx
+	pop ecx
+	pop eax
+	ret
+SetMainScreen ENDP
+
+; Draws text and fishes in the main screen
+; NO PARAMETERS
+DrawsMainScreenLayer PROC
+	push edx
+	push eax
+	push ecx
+	push ebx
+	
+	; Draw Title
+	mov dx, 021Ah
+	call GOTOXY
+	mov edx, OFFSET tTitle
+	call WriteString
+	
+	; Draw Play
+	mov dx, 061Ah
+	call GOTOXY
+	mov edx, OFFSET tPlay
+	call WriteString
+
+	; Draw Instructions
+	mov dx, 081Ah
+	call GOTOXY
+	mov edx, OFFSET tInstructions
+	call WriteString
+	
+	; Draw Difficulty
+	mov dx, 0A1Ah
+	call GOTOXY
+	mov edx, OFFSET tDifficulty
+	call WriteString
+	
+	; Draw Quit
+	mov dx, 0C1Ah
+	call GOTOXY
+	mov edx, OFFSET tQuit
+	call WriteString
+	
+	; Draws Arrow
+	mov al, ">"
+	mov ebx, MenuSelection
+	cmp ebx, 00000001b
+	je play
+	cmp ebx, 00000100b
+	je inst
+	cmp ebx, 00010000b
+	je diff
+	cmp ebx, 01000000b
+	je quit
+	jmp sair
+	
+play:
+	mov dx, 0618h
+	call GOTOXY
+	call WriteChar		
+	jmp sair
+	
+inst:
+	mov dx, 0818h
+	call GOTOXY
+	call WriteChar		
+	jmp sair
+
+diff:
+	mov dx, 0A18h
+	call GOTOXY
+	call WriteChar		
+	jmp sair
+
+quit:
+	mov dx, 0C18h
+	call GOTOXY
+	call WriteChar		
+	
+sair:
+	pop ebx
+	pop ecx
+	pop eax
+	pop edx
+	ret
+DrawsMainScreenLayer ENDP
+
+; Menu key detection
+; NO PARAMETERS
+MenuSelection PROC
+	push eax
+	push ebx
+	push ecx
+	push edx
+
+	mov eax, 0
+	call FPSRate
+	call ReadKey
+	jz sair
+	
+	cmp al, "w"
+	je up
+	cmp al, "s"
+	je down
+	cmp al, " "
+	je space
+	jmp sair
+	
+up:
+	rol MenuOption, 2 
+	jmp sair
+	
+down:
+	ror MenuOption, 2
+	jmp sair
+
+space:
+	; Implementar a troca de menus;;;;;;;;;;;;;;;;;;;
+
+sair:
+	pop edx
+	pop ecx
+	pop ebx
+	pop eax
+	ret
+MenuSelection ENDP
 
 
 main PROC
 	call Clrscr
 	call Randomize
+	call SetColor_Default
 	call SetColor_Blue
-mLoop:
+	call SetMainScreen
+	call DrawScreen
+	
+MainLoop:  ; Main screen Loop
+	call FixCursor
+	call DrawsMainScreenLayer
+	call FixCursor
+	call MenuSelection
+	jmp MainLoop
+	
+GameLoop:  ; In-game loop
 	call Clear
 	call CreateFood
 	call DrawHeader
@@ -957,7 +1156,7 @@ mLoop:
 	call Shift
 	call Collision
 	call Move
-	jmp mLoop
+	jmp GameLoop
 	
 	exit
 main ENDP
