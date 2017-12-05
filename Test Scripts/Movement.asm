@@ -39,6 +39,8 @@ nRows = 16
 	tDifficulty BYTE "Difficulty!", 0
 	tQuit BYTE "Quit!", 0
 	
+	;tMDJ BYTE  ""  Escrever o MODO DE JOGAR
+	
 									; <<*)))))>><  11 char long
 	
 	                               ; ><(((??>     
@@ -456,13 +458,23 @@ DrawHeader PROC
 	push eax
 	push ecx
 	
-	; Draws Scoreboard
 	call FixCursor
 	call SetColor_Default
+	
+	; Draws black spaces in front of scoreboard
+	mov ecx, nColumns
+	mov al, 0
+L35:
+	call WriteChar
+	loop L35
+	
+	; Draws Scoreboard
+	call FixCursor
 	mov edx, OFFSET tScore
 	call WriteString
 	mov eax, score
 	call WriteDec
+	
 	
 	; Draws Upper Border
 	mov al, 3Dh 
@@ -1043,16 +1055,35 @@ DrawsMainScreenLayer PROC
 	mov edx, OFFSET tQuit
 	call WriteString
 	
+	; Draws Fishes
+	mov dx, 0208h  
+	call FishBackground
+	mov dx, 0505h  
+	call FishBackground
+	mov dx, 0904h  
+	call FishBackground
+	mov dx, 0C07h  
+	call FishBackground
+	mov ebx, 1
+	mov dx, 022Eh  
+	call FishBackground
+	mov dx, 0531h  
+	call FishBackground
+	mov dx, 0930h  
+	call FishBackground
+	mov dx, 0C2Dh  
+	call FishBackground
+	
 	; Draws Arrow
 	mov al, ">"
-	mov ebx, MenuSelection
-	cmp ebx, 00000001b
+	mov bl, MenuOption
+	cmp bl, 00000001b
 	je play
-	cmp ebx, 00000100b
+	cmp bl, 00000100b
 	je inst
-	cmp ebx, 00010000b
+	cmp bl, 00010000b
 	je diff
-	cmp ebx, 01000000b
+	cmp bl, 01000000b
 	je quit
 	jmp sair
 	
@@ -1098,7 +1129,7 @@ MenuSelection PROC
 	mov eax, 0
 	call FPSRate
 	call ReadKey
-	jz sair
+	jz sairFunc
 	
 	cmp al, "w"
 	je up
@@ -1106,20 +1137,44 @@ MenuSelection PROC
 	je down
 	cmp al, " "
 	je space
-	jmp sair
+	jmp sairFunc
 	
 up:
-	rol MenuOption, 2 
-	jmp sair
+	ror MenuOption, 2 
+	jmp sairFunc
 	
 down:
-	ror MenuOption, 2
-	jmp sair
+	rol MenuOption, 2
+	jmp sairFunc
 
 space:
-	; Implementar a troca de menus;;;;;;;;;;;;;;;;;;;
+	mov bl, MenuOption
+	cmp bl, 00000001b
+	je play
+	cmp bl, 00000100b
+	je inst
+	cmp bl, 00010000b
+	je diff
+	jmp quit
+	
+play:
+	mov GameState, 1
+	jmp sairFunc
 
-sair:
+inst:
+	mov GameState, 2
+	jmp sairFunc
+	
+diff:
+	mov GameState, 3
+	jmp sairFunc
+
+quit:
+	call SetColor_Default
+	call Clrscr
+	exit
+
+sairFunc:
 	pop edx
 	pop ecx
 	pop ebx
@@ -1127,7 +1182,78 @@ sair:
 	ret
 MenuSelection ENDP
 
+; Inserts "0" to all positions in screen matrix
+; NO PARAMETERS
+ClearMatrix PROC
+	push ecx
+	push edx
+	
+	mov edx, 0
+	mov ecx, LENGTHOF matriz
+L34:
+	mov matriz[edx], 0
+	inc edx
+	cmp edx, ecx
+	jne L34
+	
+	pop edx
+	pop ecx
+	ret
+ClearMatrix ENDP
 
+; Draws a fish to the background layer
+; INPUT: bl = if 1, writes an inverted fish.
+FishBackground PROC
+	push eax
+	push ebx
+
+	cmp ebx, 1
+	je Inverted
+	call GOTOXY
+	mov al, 62
+	call WriteChar
+	mov al, 60
+	call WriteChar
+	mov al, 40
+	call WriteChar
+	mov al, 40
+	call WriteChar
+	mov al, 40
+	call WriteChar
+	mov al, 167
+	call WriteChar
+	mov al, 62
+	call WriteChar
+	jmp quit
+
+Inverted:
+	call GOTOXY
+	mov al, 60
+	call WriteChar
+	mov al, 167
+	call WriteChar
+	mov al, 41
+	call WriteChar
+	mov al, 41
+	call WriteChar
+	mov al, 41
+	call WriteChar
+	mov al, 62
+	call WriteChar
+	mov al, 60
+	call WriteChar
+quit:
+	
+	pop ebx
+	pop eax
+	ret
+FishBackground ENDP
+
+
+
+
+
+; MAIN EXECUTION FLOW
 main PROC
 	call Clrscr
 	call Randomize
@@ -1137,10 +1263,31 @@ main PROC
 	call DrawScreen
 	
 MainLoop:  ; Main screen Loop
+	call Clear
 	call FixCursor
+	call DrawScreen
 	call DrawsMainScreenLayer
 	call FixCursor
+	call FPSRate
 	call MenuSelection
+	
+	cmp GameState, 0  ; Switches to another screen if not in main menu state anymore
+	jne LoadScreen
+	
+	jmp MainLoop
+
+InstructionLoop:  ; Instructions screen loop
+	
+	jmp InstructionLoop
+	
+LoadScreen:  ; Transition between states
+	cmp GameState, 1
+	call ClearMatrix
+	je GameLoop
+	cmp GameState, 0
+	je MainLoop
+	cmp GameState, 2
+	je InstructionLoop
 	jmp MainLoop
 	
 GameLoop:  ; In-game loop
@@ -1157,6 +1304,9 @@ GameLoop:  ; In-game loop
 	call Collision
 	call Move
 	jmp GameLoop
+	
+	cmp GameState, 1 ; Switches to another screen if not on the in-game state anymore
+	jne LoadScreen
 	
 	exit
 main ENDP
