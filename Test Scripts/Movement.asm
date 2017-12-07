@@ -5,6 +5,19 @@ Include ..\win32.inc
 nColumns = 64
 nRows = 16
 
+; Sound Support
+includelib Winmm.lib
+
+PlaySound PROTO,
+        pszSound:PTR BYTE, 
+        hmod:DWORD, 
+        fdwSound:DWORD
+	
+;  "Working functions"	
+;	INVOKE PlaySound, OFFSET deviceConnect, NULL, SND_ALIAS
+;   INVOKE PlaySound, OFFSET file, NULL, SND_FILENAME
+
+
 .data
 	; Display Matrixes
 	matriz BYTE nColumns*nRows dup(00h)
@@ -20,12 +33,13 @@ nRows = 16
 	score DWORD 0
 	
 	; Enemy options
-	enemytimer DWORD 20
-	enemyposition DWORD 30 dup(0)
+	enemytimer DWORD 20 ;20
+	enemyposition DWORD 45 dup(0)
 	
 	; Difficulty
-	foodwaitingtime DWORD 30  ; 40 - Easy, 30 - Medium, 20 - Hard, 10 - Pro
-	difficulty DWORD 5  ; 20 - Easy, 15 - Medium, 10 - Hard, 5 - Pro
+	foodwaitingtime DWORD 40  ; 40 - Easy, 30 - Medium, 20 - Hard, 10 - Pro, 5 - Prozera
+	difficulty DWORD 20  ; 20 - Easy, 15 - Medium, 10 - Hard, 5 - Pro, 2 - Prozera
+	DifSetting DWORD 1   ; 1 - Easy, 2 - Medium, 3 - Hard, 4 - Pro, 5 - Prozera
 	
 	; Screen Options
 	GameState DWORD 0  ; 0 - Main Menu, 1 - In-game, 2 - Instructions, 3 - Difficulty
@@ -38,21 +52,31 @@ nRows = 16
 	tInstructions BYTE "Instructions!", 0
 	tDifficulty BYTE "Difficulty!", 0
 	tQuit BYTE "Quit!", 0
+	tInst1 BYTE "You objective is to guide your fish", 0
+	tInst2 BYTE "through the sea.", 0
+	tInst3 BYTE "Eat food (+) to increase your overall score.", 0
+	tInst4 BYTE "Avoid bigger fishes. They kill you.", 0
+	tInst5 BYTE "Hit SPACE to go back.", 0
+	tDif1 BYTE "Easy", 0
+	tDif2 BYTE "Medium", 0
+	tDif3 BYTE "Hard", 0
+	tDif4 BYTE "Pro", 0
+	tDif5 BYTE "Prozera", 0
+	tGO1 BYTE "You died!", 0
+	TGO2 BYTE "Final Score: ", 0
 	
-	;tMDJ BYTE  ""  Escrever o MODO DE JOGAR
+	; Cursor Options
+	cci CONSOLE_CURSOR_INFO <>
+	chand dd ?
 	
-									; <<*)))))>><  11 char long
-	
-	                               ; ><(((??>     
-								   
-								   ; Ascii Characters
-								   ; > = 62
-								   ; < = 60
-								   ; ( = 40
-								   ; ?? = 167
-								   ; * = 42
-								   ; + = 43
+	; Sound Options
+	deviceConnect BYTE "DeviceConnect",0
 
+	SND_ALIAS    DWORD 00010000h
+	SND_RESOURCE DWORD 00040005h
+	SND_FILENAME DWORD 00020000h
+
+	file BYTE ".\Requiem.wav",0
 .code
 
 ; Rotates all elements in array. Inserts the first element into the last
@@ -276,6 +300,7 @@ Move PROC
 q:
 	call SetColor_Default
 	call Clrscr
+	call ShowCursor
 	exit
 	
 left:
@@ -337,7 +362,7 @@ L5:
 	jne L5
 	add dx, 0100h
 	mov dl, 0
-	cmp dx, 4200h
+	cmp dx, 1000h
 	je L6
 L6:
 	
@@ -348,7 +373,7 @@ L6:
 	ret
 Clear ENDP
 
-; Fixes cursor glitching all around the screen
+; Sets cursor to the starting position of the terminal
 ; NO PARAMETERS
 FixCursor PROC
 	push edx
@@ -359,6 +384,18 @@ FixCursor PROC
 	pop edx
 	ret
 FixCursor ENDP
+
+; Fixes cursor glitching all around the screen
+; NO PARAMETERS
+HoldCursor PROC
+	push edx
+	
+	mov dx, 1200h
+	call GOTOXY
+	
+	pop edx
+	ret
+HoldCursor ENDP
 
 ; Sets the cursor to the first pixel of the game screen
 ; NO PARAMETERS
@@ -419,7 +456,7 @@ CreateFood ENDP
 SetColor_Red PROC
 	push eax
 
-	mov eax, red+(black*16)
+	mov eax, red+(blue*16)
 	call SetTextColor
 	
 	pop eax
@@ -503,6 +540,8 @@ L10:
 	ret
 DrawHeader ENDP
 
+; Checks for collision with objects
+; NO PARAMETERS
 Collision PROC
 	push eax
 	push ebx
@@ -547,9 +586,7 @@ HitFood: ; Collided to food
 	jmp L12
 
 EnemyHit:  ; Collided to enemy
-	call SetColor_Default
-	call Clrscr
-	exit
+	mov GameState, 4
 
 L12:  ; Didn't Collide	
 	pop ebx
@@ -1011,22 +1048,42 @@ L33: ; Draws bottom border
 	inc edx
 	mov screen_buffer[edx], al
 	
+	; Draws Fishes
+	mov eax, 135
+	call FishBackground
+	mov eax, 324 
+	call FishBackground
+	mov eax, 579 
+	call FishBackground
+	mov eax, 774
+	call FishBackground
+	mov ebx, 1
+	mov eax, 174
+	call FishBackground
+	mov eax, 372 
+	call FishBackground
+	mov eax, 627
+	call FishBackground
+	mov eax, 816  
+	call FishBackground
+	
+	
 	pop edx
 	pop ecx
 	pop eax
 	ret
 SetMainScreen ENDP
 
-; Draws text and fishes in the main screen
+; Draws text in the main screen
 ; NO PARAMETERS
-DrawsMainScreenLayer PROC
+DrawMainScreenText PROC
 	push edx
 	push eax
 	push ecx
 	push ebx
 	
 	; Draw Title
-	mov dx, 021Ah
+	mov edx, 021Ah
 	call GOTOXY
 	mov edx, OFFSET tTitle
 	call WriteString
@@ -1054,26 +1111,22 @@ DrawsMainScreenLayer PROC
 	call GOTOXY
 	mov edx, OFFSET tQuit
 	call WriteString
+
+	pop ebx
+	pop ecx
+	pop eax
+	pop edx
+	ret
+DrawMainScreenText ENDP	
+
+; Moves the selection arrow in menu
 	
-	; Draws Fishes
-	mov dx, 0208h  
-	call FishBackground
-	mov dx, 0505h  
-	call FishBackground
-	mov dx, 0904h  
-	call FishBackground
-	mov dx, 0C07h  
-	call FishBackground
-	mov ebx, 1
-	mov dx, 022Eh  
-	call FishBackground
-	mov dx, 0531h  
-	call FishBackground
-	mov dx, 0930h  
-	call FishBackground
-	mov dx, 0C2Dh  
-	call FishBackground
-	
+UpdateMenuArrow PROC
+	push edx
+	push eax
+	push ecx
+	push ebx
+
 	; Draws Arrow
 	mov al, ">"
 	mov bl, MenuOption
@@ -1090,25 +1143,54 @@ DrawsMainScreenLayer PROC
 play:
 	mov dx, 0618h
 	call GOTOXY
-	call WriteChar		
+	call WriteChar
+	mov al, 0
+	mov dx, 0818h
+	call GOTOXY
+	call WriteChar
+	mov dx, 0C18h
+	call GOTOXY
+	call WriteChar
+	
 	jmp sair
 	
 inst:
 	mov dx, 0818h
 	call GOTOXY
-	call WriteChar		
+	call WriteChar	
+	mov al, 0
+	mov dx, 0618h
+	call GOTOXY
+	call WriteChar
+	mov dx, 0A18h
+	call GOTOXY
+	call WriteChar	
 	jmp sair
 
 diff:
 	mov dx, 0A18h
 	call GOTOXY
-	call WriteChar		
+	call WriteChar
+	mov al, 0
+	mov dx, 0818h
+	call GOTOXY
+	call WriteChar
+	mov dx, 0C18h
+	call GOTOXY
+	call WriteChar	
 	jmp sair
 
 quit:
 	mov dx, 0C18h
 	call GOTOXY
-	call WriteChar		
+	call WriteChar
+	mov al, 0
+	mov dx, 0A18h
+	call GOTOXY
+	call WriteChar
+	mov dx, 0618h
+	call GOTOXY
+	call WriteChar	
 	
 sair:
 	pop ebx
@@ -1116,7 +1198,7 @@ sair:
 	pop eax
 	pop edx
 	ret
-DrawsMainScreenLayer ENDP
+UpdateMenuArrow ENDP
 
 ; Menu key detection
 ; NO PARAMETERS
@@ -1135,16 +1217,26 @@ MenuSelection PROC
 	je up
 	cmp al, "s"
 	je down
+	cmp al, "q"
+	je quit2
 	cmp al, " "
 	je space
 	jmp sairFunc
+
+quit2:
+	call SetColor_Default
+	call Clrscr
+	call ShowCursor
+	exit
 	
 up:
 	ror MenuOption, 2 
+	call UpdateMenuArrow
 	jmp sairFunc
 	
 down:
 	rol MenuOption, 2
+	call UpdateMenuArrow
 	jmp sairFunc
 
 space:
@@ -1172,6 +1264,7 @@ diff:
 quit:
 	call SetColor_Default
 	call Clrscr
+	call ShowCursor
 	exit
 
 sairFunc:
@@ -1192,6 +1285,7 @@ ClearMatrix PROC
 	mov ecx, LENGTHOF matriz
 L34:
 	mov matriz[edx], 0
+	mov screen_buffer[edx], 0
 	inc edx
 	cmp edx, ecx
 	jne L34
@@ -1202,46 +1296,30 @@ L34:
 ClearMatrix ENDP
 
 ; Draws a fish to the background layer
-; INPUT: bl = if 1, writes an inverted fish.
+; INPUT: eax = index of matriz to write; bl = if 1, writes an inverted fish.
 FishBackground PROC
 	push eax
 	push ebx
 
 	cmp ebx, 1
 	je Inverted
-	call GOTOXY
-	mov al, 62
-	call WriteChar
-	mov al, 60
-	call WriteChar
-	mov al, 40
-	call WriteChar
-	mov al, 40
-	call WriteChar
-	mov al, 40
-	call WriteChar
-	mov al, 167
-	call WriteChar
-	mov al, 62
-	call WriteChar
+	mov screen_buffer[eax], 62
+	mov screen_buffer[eax+1], 60
+	mov screen_buffer[eax+2], 40
+	mov screen_buffer[eax+3], 40
+	mov screen_buffer[eax+4], 40
+	mov screen_buffer[eax+5], 167
+	mov screen_buffer[eax+6], 62
 	jmp quit
 
 Inverted:
-	call GOTOXY
-	mov al, 60
-	call WriteChar
-	mov al, 167
-	call WriteChar
-	mov al, 41
-	call WriteChar
-	mov al, 41
-	call WriteChar
-	mov al, 41
-	call WriteChar
-	mov al, 62
-	call WriteChar
-	mov al, 60
-	call WriteChar
+	mov screen_buffer[eax], 60
+	mov screen_buffer[eax+1], 167
+	mov screen_buffer[eax+2], 41
+	mov screen_buffer[eax+3], 41
+	mov screen_buffer[eax+4], 41
+	mov screen_buffer[eax+5], 62
+	mov screen_buffer[eax+6], 60
 quit:
 	
 	pop ebx
@@ -1249,65 +1327,520 @@ quit:
 	ret
 FishBackground ENDP
 
+; Writes screen borders
+; NO PARAMETERS
+SetScreenBorders PROC
+	push eax
+	push ecx
+	push edx
+	
+	mov ecx, nRows-1  ; Loop Index
+	mov al, "#"
+	mov edx, 0  ; Screen Index
+	
+L31: ; Draws Sides
+	mov screen_buffer[edx], al
+	add edx, nColumns-1
+	mov screen_buffer[edx], al
+	inc edx
+	loop L31
+
+	mov edx, 1
+	mov ecx, nColumns-2
+
+L32: ; Draws upper border
+	mov screen_buffer[edx], al
+	inc edx
+	loop L32
+
+	mov edx, nColumns
+	mov ecx, nColumns-2
+	mov eax, nRows-1
+	mul dl
+	mov edx, eax
+	mov al, "#"
+	
+L33: ; Draws bottom border
+	mov screen_buffer[edx], al
+	inc edx
+	loop L33
+	mov screen_buffer[edx], al
+	inc edx
+	mov screen_buffer[edx], al
+	
+	pop edx
+	pop ecx
+	pop eax
+	ret
+SetScreenBorders ENDP
+
+; Draws background text in Instruction Screen
+; NO PARAMETERS
+DrawInstructionsText PROC
+	push edx
+	
+	; Draw Instructions
+	mov dx, 050Dh
+	call GOTOXY
+	mov edx, OFFSET tInst1
+	call WriteString
+	mov dx, 060Dh
+	call GOTOXY
+	mov edx, OFFSET tInst2
+	call WriteString
+	mov dx, 070Dh
+	call GOTOXY
+	mov edx, OFFSET tInst3
+	call WriteString
+	mov dx, 080Dh
+	call GOTOXY
+	mov edx, OFFSET tInst4
+	call WriteString
+	mov dx, 0D15h
+	call GOTOXY
+	mov edx, OFFSET tInst5
+	call WriteString
+
+	pop edx
+	ret
+DrawInstructionsText ENDP
+
+; Draws background text in Difficulty Screen
+; NO PARAMETERS
+DrawDifficultyText PROC
+	push edx
+	
+	; Draw Difficulty
+	
+	mov dx, 050Dh
+	call GOTOXY
+	mov edx, OFFSET tDif1
+	cmp DifSetting, 1
+	jne skip1
+	call SetColor_Red
+skip1:
+	call WriteString
+	call SetColor_Blue
+	
+	mov dx, 060Dh
+	call GOTOXY
+	mov edx, OFFSET tDif2
+	cmp DifSetting, 2
+	jne skip2
+	call SetColor_Red
+skip2:
+	call WriteString
+	call SetColor_Blue
 
 
+	mov dx, 070Dh
+	call GOTOXY
+	mov edx, OFFSET tDif3
+	cmp DifSetting, 3
+	jne skip3
+	call SetColor_Red
+skip3:
+	call WriteString
+	call SetColor_Blue
 
+	
+	mov dx, 080Dh
+	call GOTOXY
+	mov edx, OFFSET tDif4
+	cmp DifSetting, 4
+	jne skip4
+	call SetColor_Red
+skip4:
+	call WriteString
+	call SetColor_Blue
+
+	
+	mov dx, 090Dh
+	call GOTOXY
+	mov edx, OFFSET tDif5
+	cmp DifSetting, 5
+	jne skip5
+	call SetColor_Red
+skip5:
+	call WriteString
+	call SetColor_Blue
+
+	pop edx
+	ret
+DrawDifficultyText ENDP
+
+
+; Waits for a key to be pressed
+; NO PARAMETERS
+WaitKey PROC
+	push eax
+
+	mov eax, 0
+	call FPSRate
+	call ReadKey
+	jz sairFunc
+	
+	cmp al, "q"
+	je quit
+	cmp al, " "
+	je space
+	jmp sairFunc
+	
+quit:
+	call SetColor_Default
+	call Clrscr
+	call ShowCursor
+	exit
+
+space:
+	mov GameState, 0
+	
+sairFunc:
+	pop eax
+	ret
+WaitKey ENDP
+
+; Controls the entire Difficulty Screen
+; NO PARAMETERS
+SelectDifficulty PROC
+	push eax
+	push ebx
+
+	mov eax, 0
+	call FPSRate
+	call ReadKey
+	jz sairFunc
+
+	cmp al, "w"
+	je up
+	cmp al, "s"
+	je down	
+	cmp al, "q"
+	je quit
+	cmp al, " "
+	je space
+	jmp sairFunc	
+	
+up:
+	cmp DifSetting, 1
+	jne skip
+	mov DifSetting, 5
+	jmp continue
+	skip:
+	mov eax, DifSetting
+	dec eax
+	mov DifSetting, eax
+	jmp continue
+	
+down:
+	cmp DifSetting, 5
+	jne skip2
+	mov DifSetting, 1
+	jmp continue
+	skip2:
+	mov eax, DifSetting
+	inc eax
+	mov DifSetting, eax
+	jmp continue	
+
+	; Write Arrow
+continue:
+	mov al, ">"
+	mov ebx, DifSetting
+	cmp bl, 1
+	je easy
+	cmp bl, 2
+	je med
+	cmp bl, 3
+	je hard
+	cmp bl, 4
+	je pro
+	jmp prozera
+	
+easy:
+	mov dx, 050bh
+	call GOTOXY
+	call WriteChar
+	mov al, 0
+	mov dx, 060bh
+	call GOTOXY
+	call WriteChar
+	mov dx, 090bh
+	call GOTOXY
+	call WriteChar
+	
+	jmp sairFunc
+
+med:
+	mov dx, 060bh
+	call GOTOXY
+	call WriteChar
+	mov al, 0
+	mov dx, 070bh
+	call GOTOXY
+	call WriteChar
+	mov dx, 050bh
+	call GOTOXY
+	call WriteChar
+	
+	jmp sairFunc
+
+hard:
+	mov dx, 070bh
+	call GOTOXY
+	call WriteChar
+	mov al, 0
+	mov dx, 080bh
+	call GOTOXY
+	call WriteChar
+	mov dx, 060bh
+	call GOTOXY
+	call WriteChar
+	
+	jmp sairFunc
+
+pro:
+	mov dx, 080bh
+	call GOTOXY
+	call WriteChar
+	mov al, 0
+	mov dx, 070bh
+	call GOTOXY
+	call WriteChar
+	mov dx, 090bh
+	call GOTOXY
+	call WriteChar
+	
+	jmp sairFunc
+
+prozera:
+	mov dx, 090bh
+	call GOTOXY
+	call WriteChar
+	mov al, 0
+	mov dx, 080bh
+	call GOTOXY
+	call WriteChar
+	mov dx, 050bh
+	call GOTOXY
+	call WriteChar
+	jmp sairFunc
+	
+quit:
+	call SetColor_Default
+	call Crlf
+	Call ShowCursor
+	exit
+	
+	; Space key log
+
+space:
+	cmp DifSetting, 1
+	je KeyE
+	cmp DifSetting, 2
+	je KeyM
+	cmp DifSetting, 3
+	je KeyH
+	cmp DifSetting, 4
+	je KeyP
+	jmp KeyPZ
+	
+KeyE:
+	mov difficulty, 20
+	mov foodwaitingtime, 40
+	mov GameState, 0
+	jmp sairFunc
+KeyM:
+	mov difficulty, 15
+	mov foodwaitingtime, 30
+	mov GameState, 0
+	jmp sairFunc
+KeyH:
+	mov difficulty, 10
+	mov foodwaitingtime, 20
+	mov GameState, 0
+	jmp sairFunc
+KeyP:
+	mov difficulty, 5
+	mov foodwaitingtime, 10
+	mov GameState, 0
+	jmp sairFunc
+KeyPZ:
+	mov difficulty, 2
+	mov foodwaitingtime, 5
+	mov GameState, 0
+	
+sairFunc:
+	pop ebx
+	pop eax
+	ret
+SelectDifficulty ENDP
+
+; Draws background text in Game Over Screen
+; NO PARAMETERS
+DrawGameOver PROC
+	push edx
+	
+	; Draw Texts
+	
+	mov dx, 0612h
+	call GOTOXY
+	mov edx, OFFSET tGO1
+	call WriteString
+	
+	mov dx, 0A12h
+	call GOTOXY
+	mov edx, OFFSET tGO2
+	call WriteString
+
+	mov eax, score
+	call WriteDec
+	
+	pop edx
+	ret
+DrawGameOver ENDP
+
+; Hides terminal cursor
+; NO PARAMETERS
+HideCursor PROC
+
+	invoke GetStdHandle,STD_OUTPUT_HANDLE
+	mov chand,eax
+	invoke GetConsoleCursorInfo,chand,addr cci
+	mov cci.bVisible,FALSE
+	ret
+HideCursor ENDP
+
+; Hides terminal cursor
+; NO PARAMETERS
+ShowCursor PROC
+
+	invoke GetStdHandle,STD_OUTPUT_HANDLE
+	mov chand,eax
+	invoke GetConsoleCursorInfo,chand,addr cci
+	mov cci.bVisible,TRUE
+	ret
+ShowCursor ENDP
 
 ; MAIN EXECUTION FLOW
 main PROC
+	call HideCursor
 	call Clrscr
 	call Randomize
 	call SetColor_Default
 	call SetColor_Blue
-	call SetMainScreen
-	call DrawScreen
 	
 MainLoop:  ; Main screen Loop
-	call Clear
-	call FixCursor
+	call SetMainScreen
 	call DrawScreen
-	call DrawsMainScreenLayer
 	call FixCursor
-	call FPSRate
+	call DrawMainScreenText
+	call UpdateMenuArrow
+MenuLoop:
+	call TickRate
 	call MenuSelection
+	call FixCursor
 	
 	cmp GameState, 0  ; Switches to another screen if not in main menu state anymore
 	jne LoadScreen
 	
-	jmp MainLoop
+	jmp MenuLoop
 
 InstructionLoop:  ; Instructions screen loop
+	call SetScreenBorders
+	call DrawScreen
+	call DrawInstructionsText
+
+HelpLoop:	
+	call FPSRate
+	call WaitKey
 	
-	jmp InstructionLoop
+	cmp GameState, 2
+	jne LoadScreen
 	
-LoadScreen:  ; Transition between states
-	cmp GameState, 1
+	jmp HelpLoop
+	
+DifficultyLoop:   ; Difficulty screen loop
+	call SetScreenBorders
+	call DrawScreen
+	call DrawDifficultyText
+	
+ProLoop:
+	call SelectDifficulty
+	call FixCursor
+	call FPSRate
+	
+	cmp GameState, 3
+	jne LoadScreen
+	
+	jmp ProLoop
+	
+GameOverLoop:  ; Gameover Screen loop
+	call SetColor_Default
+	call Clrscr
+	call SetColor_Blue
+	call FixCursor
 	call ClearMatrix
+	call SetScreenBorders
+	call DrawScreen
+	call DrawGameOver
+	call FixCursor
+Overloop:
+	call FPSRate
+	call ReadKey
+	jnz Restart
+	jmp Overloop
+	
+Restart:
+	mov score, 0
+	mov GameState, 0
+	mov player_x, 6
+	mov player_y, 6
+	jmp LoadScreen
+	
+	
+LoadScreen:  ; Transition between screens
+	call FixCursor
+	call ClearMatrix
+	mov ebx, 0
+	cmp GameState, 1
 	je GameLoop
 	cmp GameState, 0
 	je MainLoop
 	cmp GameState, 2
 	je InstructionLoop
+	cmp GameState, 3
+	je DifficultyLoop
+	cmp GameState, 4
+	je GameOverLoop
 	jmp MainLoop
 	
 GameLoop:  ; In-game loop
+	call HideCursor
 	call Clear
+	call HoldCursor
 	call CreateFood
 	call DrawHeader
+	call HoldCursor
 	call Draw_Enemy
+	call HoldCursor
 	call CreateEnemy
+	call HoldCursor
 	call DrawFish
+	call HoldCursor
 	call DrawScreen
-	call FixCursor
+	call HoldCursor
+	call HideCursor
 	call FPSRate
 	call Shift
-	call Collision
+	call HoldCursor
 	call Move
-	jmp GameLoop
+	call HoldCursor
+	call Collision
+	call HoldCursor
 	
 	cmp GameState, 1 ; Switches to another screen if not on the in-game state anymore
 	jne LoadScreen
-	
-	exit
+	jmp GameLoop
 main ENDP
 END main
